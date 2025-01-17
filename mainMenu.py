@@ -67,7 +67,7 @@ def save_schedule(schedule_frame, barshift_data, selected_date):
         schedule.append(timeslot)
 
     # Construct the filename with the selected date
-    filename = f'saved_schedule_{selected_date}.csv'
+    filename = f'saved schedule {selected_date}.csv'
 
     with open(filename, mode='w', newline='') as file:
         csv_writer = csv.writer(file, delimiter=';')
@@ -82,7 +82,7 @@ def load_schedule(schedule_frame, barshift_data, selected_date):
     if not messagebox.askyesno("Confirm Load", "Are you sure you want to load the schedule?"):
         return
 
-    filename = f'saved_schedule_{selected_date}.csv'
+    filename = f'saved schedule {selected_date}.csv'
     if os.path.exists(filename):
         saved_schedule = read_csv(filename)
         for row_index, row in enumerate(saved_schedule):
@@ -120,7 +120,7 @@ def register_schedule(schedule_frame, barshift_data):
     messagebox.showinfo("Success", "Schedule registered successfully")
 
 # Function to fill in the schedule with names
-def fill_in_schedule(schedule_frame, barshift_data):
+def pick_random_person(schedule_frame, barshift_data, random_person_label):
     # Read the current people data
     people_data = read_csv('people.csv')
     people_dict = {row[0]: float(row[1]) for row in people_data}
@@ -141,29 +141,11 @@ def fill_in_schedule(schedule_frame, barshift_data):
     # Remove entries with names in existingNames from sorted_people
     sorted_people = [person for person in sorted_people if person[0] not in existingNames]
 
-    # Go through the cells of the schedule from the bottom up 
-    for row_index in range(len(barshift_data) - 1, 3, -1):
-        for col_index in range(1, int(barshift_data[row_index][1])+1):
-
-            # Check if the cell and the 3 cells above it are empty
-            if all(schedule_frame.grid_slaves(row=row_index-i, column=col_index)[0].get() == "" for i in range(4)):
-                # Find the name with the fewest hours
-                min_hours = sorted_people[0][1]
-                candidates = [person for person in sorted_people if person[1] == min_hours]
-                selected_person = random.choice(candidates)
-
-                # Remove the selected person from the sorted_people list
-                sorted_people = [person for person in sorted_people if person[0] != selected_person[0]]
-
-                # Set the selected person's name in the current cell and the 3 cells above it in the schedule
-                name_var = schedule_frame.grid_slaves(row=row_index, column=col_index)[0]
-                name_var.set(selected_person[0])
-                name_var = schedule_frame.grid_slaves(row=row_index-1, column=col_index)[0]
-                name_var.set(selected_person[0])
-                name_var = schedule_frame.grid_slaves(row=row_index-2, column=col_index)[0]
-                name_var.set(selected_person[0])
-                name_var = schedule_frame.grid_slaves(row=row_index-3, column=col_index)[0]
-                name_var.set(selected_person[0])
+    # Find a random person with the fewest hours
+    min_hours = sorted_people[0][1]
+    candidates = [person for person in sorted_people if person[1] == min_hours]
+    selected_person = random.choice(candidates)
+    random_person_label.config(text=selected_person[0]+" ("+str(selected_person[1])+" hours)")
 
 def clear_schedule(schedule_frame):
     # Ask for confirmation
@@ -228,13 +210,16 @@ def open_edit_frame(edit_window, dates_listbox):
     register_button = tk.Button(edit_frame, text="Register", command=lambda: register_schedule(schedule_frame, barshift_data))
     register_button.pack(side='left', pady=10, padx=5)
 
-    # Add the fill in schedule button
-    fill_button = tk.Button(edit_frame, text="Fill in", command=lambda: fill_in_schedule(schedule_frame, barshift_data))
-    fill_button.pack(side='left', pady=10, padx=5)
-
     # Add the clear schedule button
-    fill_button = tk.Button(edit_frame, text="Clear", command=lambda: clear_schedule(schedule_frame))
-    fill_button.pack(side='left', pady=10, padx=5)
+    clear_button = tk.Button(edit_frame, text="Clear", command=lambda: clear_schedule(schedule_frame))
+    clear_button.pack(side='left', pady=10, padx=5)
+
+    # Add the person button and the random person label
+    random_person_label = tk.Label(edit_frame, text="...")
+    person_button = tk.Button(edit_frame, text="Person", command=lambda: pick_random_person(schedule_frame, barshift_data, random_person_label))
+
+    person_button.pack(side='left', pady=10, padx=5)
+    random_person_label.pack(side='left', pady=10, padx=5)
 
 # Function to open the edit barshift window
 def open_edit_barshift_window():
@@ -261,6 +246,91 @@ def open_edit_barshift_window():
 
     select_button = tk.Button(edit_window, text="Select", command=lambda: open_edit_frame(edit_window, dates_listbox))
     select_button.pack(pady=10)
+
+def open_notes_window():
+    notes_window = tk.Toplevel(window)
+    notes_window.title("Edit Notes")
+
+    # Get the position of the main window
+    main_window_x = window.winfo_x()
+    main_window_y = window.winfo_y()
+    main_window_width = window.winfo_width()
+
+    # Set the position of the notes window near the "Edit notes" button
+    notes_window.geometry(f"+{main_window_x + main_window_width + 10}+{main_window_y}")
+    
+    # Function to save notes to CSV
+    def save_notes(notes_data):
+        write_csv('people_notes.csv', notes_data)
+        messagebox.showinfo("Success", "Notes saved successfully")
+
+    # Function to load notes from CSV
+    def load_notes():
+        return read_csv('people_notes.csv')
+
+    # Function to add a new person
+    def add_person():
+        new_person = new_person_entry.get()
+        if new_person:
+            notes_data.append([new_person, ""])
+            notes_listbox.insert(tk.END, new_person)
+            new_person_entry.delete(0, tk.END)
+
+    # Function to update the note for the selected person
+    def update_note():
+        selected_index = notes_listbox.curselection()
+        if selected_index:
+            selected_person = notes_listbox.get(selected_index)
+            for row in notes_data:
+                if row[0] == selected_person:
+                    row[1] = note_text.get("1.0", tk.END).strip()
+                    break
+
+    # Load existing notes
+    notes_data = load_notes()
+
+    # Listbox to display names
+    notes_listbox = tk.Listbox(notes_window)
+    notes_listbox.pack(side='left', fill='both', expand=True, padx=10, pady=10)
+
+    # Populate the listbox with names
+    for row in notes_data:
+        notes_listbox.insert(tk.END, row[0])
+
+    # Text widget to edit notes
+    note_text = tk.Text(notes_window, width=40, height=10)
+    note_text.pack(side='left', fill='both', expand=True, padx=10, pady=10)
+
+    # Entry to add a new person
+    new_person_entry = tk.Entry(notes_window)
+    new_person_entry.pack(pady=5)
+
+    # Button to add a new person
+    add_person_button = tk.Button(notes_window, text="Add Person", command=add_person)
+    add_person_button.pack(pady=5)
+
+    # Button to save notes
+    save_notes_button = tk.Button(notes_window, text="Save Notes", command=lambda: save_notes(notes_data))
+    save_notes_button.pack(pady=5)
+
+    # Button to update note
+    update_note_button = tk.Button(notes_window, text="Update Note", command=update_note)
+    update_note_button.pack(pady=5)
+
+    # Function to display the note for the selected person
+    def display_note_for_selected_person(event):
+        selected_index = notes_listbox.curselection()
+        if selected_index:
+            selected_person = notes_listbox.get(selected_index)
+            for row in notes_data:
+                if row[0] == selected_person:
+                    note_text.delete("1.0", tk.END)
+                    note_text.insert(tk.END, row[1])
+                    break
+
+    # Bind the listbox selection event to display the note
+    notes_listbox.bind("<<ListboxSelect>>", display_note_for_selected_person)
+
 
 # Ensure people.csv is sorted alphabetically before any operations
 sort_csv_alphabetically('people.csv')
@@ -297,7 +367,14 @@ tree.pack(side='left', fill='both', expand=True)
 
 # Button to propose barshift
 propose_button = tk.Button(content_frame, text="Edit barshift", command=open_edit_barshift_window)
-propose_button.pack(side='left', padx=10)
+propose_button.pack(side='top', padx=10, pady=50)
+
+# Button to edit notes
+notes_button = tk.Button(content_frame, text="Edit notes", command=open_notes_window)
+notes_button.pack(side='top', padx=10)
+
+
+
 
 # Display data when the application starts
 display_data()
